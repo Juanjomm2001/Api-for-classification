@@ -1,0 +1,57 @@
+# -------------------
+# Python
+# -------------------
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# -------------------
+# Environments
+# -------------------
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+.venv.bak/
+
+# -------------------
+# IDE / Editor
+# -------------------
+.vscode/
+.idea/
+*.swp
+
+# -------------------
+# OS Files
+# -------------------
+.DS_Store
+Thumbs.db
+
+# -------------------
+# Logs
+# -------------------
+*.log
+
+# -------------------
+# Secrets
+# -------------------
+.env
+credentials/
+*.json
+
+
+# -------------------
+# temporary folders
+# -------------------
+captured_images/
+dataset_images/
+
+
+
+
+

@@ -1,0 +1,153 @@
+<!-- templates/classify.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clasificación de Imágenes</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+            background-color: #f8f9fc;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #e3e6f0;
+        }
+        .image-container img {
+            max-width: 100%;
+            max-height: 60vh;
+            margin-bottom: 15px;
+        }
+        .btn-classify {
+            padding: 15px 30px;
+            font-size: 18px;
+            margin: 10px;
+            border-radius: 10px;
+        }
+        .btn-buena {
+            background-color: #1cc88a;
+            border-color: #169a6b;
+        }
+        .btn-mala {
+            background-color: #e74a3b;
+            border-color: #c43c30;
+        }
+        .image-info {
+            background-color: #f8f9fc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4e73df;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            flex-direction: column;
+        }
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            margin-bottom: 15px;
+        }
+        .loading-text {
+            font-size: 1.2rem;
+        }
+        .counter-badge {
+            font-size: 1.2rem;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+        }
+        .no-images {
+            text-align: center;
+            padding: 50px;
+            background-color: #f8f9fc;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-camera me-2"></i>
+                Sistema de Clasificación
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">
+                            <i class="fas fa-tachometer-alt me-1"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('classify') }}">
+                            <i class="fas fa-check-circle me-1"></i> Clasificar Imágenes
+                        </a>
+                    </li>
+                    {% if user.role == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin') }}">
+                            <i class="fas fa-users-cog me-1"></i> Administración
+                        </a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">
+                            <i class="fas fa-sign-out-alt me-1"></i> Cerrar Sesión
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h1 class="mb-4">Clasificación de Imágenes</h1>
+        
+        <div class="row mb-3">
+            <div class="col-md-12">
+                <div class="card shadow">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-primary">Imágenes pendientes</h6>
+                        <span id="counter-badge" class="badge bg-warning counter-badge">Cargando...</span>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-0">Clasifique las imágenes como "buenas" o "malas" según la calidad del agua en el conveyor.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="image-classification-container">
+            <div class="row">
+                <div class="col-md-12">
+                    <div id="image-info" class="image-info d-none">
+                        <h5 id="image-name">Nombre de la imagen</h5>
+                        <p id="image-date" class="mb-0">Fecha: </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-12">
+                    <div id="image-container" class="image-container">
+                        <img id="current-image" src="" alt="Imagen a clasificar">
+                    </div>
+                </div>
+            </div>
