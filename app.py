@@ -1,18 +1,15 @@
-# app.py
+# app.py 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import os
 import io
-import uuid
 import datetime
 import secrets
-from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 from dotenv import load_dotenv
 import base64
-from pymongo import MongoClient
 
 # Cargar variables de entorno
 load_dotenv()
@@ -20,46 +17,17 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(16))
 
-# Configurar MongoDB
-mongo_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
-client = MongoClient(mongo_uri)
-db = client.image_classification_db
-
-# Configurar Login Manager
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-
-# Modelo de usuario
-class User(UserMixin):
-    def __init__(self, id, username, password_hash, full_name, role):
-        self.id = id
-        self.username = username
-        self.password_hash = password_hash
-        self.full_name = full_name
-        self.role = role
-
-# Cargar usuario desde la base de datos
-@login_manager.user_loader
-def load_user(user_id):
-    user_data = db.users.find_one({"_id": user_id})
-    if not user_data:
-        return None
-    return User(
-        id=user_data['_id'],
-        username=user_data['username'],
-        password_hash=user_data['password_hash'],
-        full_name=user_data['full_name'],
-        role=user_data['role']
-    )
+# Credenciales fijas (reemplaza con las que prefieras)
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', '')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
 # Clase para Google Drive
 class GoogleDriveService:
     def __init__(self):
         self.service = None
         self.initialize_service()
-    
-    def initialize_service(self):
+    # Configura la conexión a Google Drive usando las credenciales
+    def initialize_service(self):  
         try:
             credentials_file = os.getenv('GOOGLE_DRIVE_CREDENTIALS')
             folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
@@ -74,7 +42,7 @@ class GoogleDriveService:
             self.service = build('drive', 'v3', credentials=credentials)
         except Exception as e:
             print(f"Error initializing Drive service: {e}")
-    
+    #Obtiene una lista de imágenes no clasificadas en la carpeta
     def list_images(self):
         if not self.service:
             return []
@@ -99,7 +67,7 @@ class GoogleDriveService:
             print(f"Error listing images: {e}")
         
         return results
-    
+    # Descarga una imagen específica
     def get_image(self, file_id):
         if not self.service:
             return None
@@ -118,7 +86,7 @@ class GoogleDriveService:
         except Exception as e:
             print(f"Error downloading image: {e}")
             return None
-    
+    # Renombra una imagen añadiendo un prefijo (buena_ o mala_)
     def classify_image(self, file_id, classification, original_name):
         if not self.service:
             return False
@@ -138,9 +106,64 @@ class GoogleDriveService:
         except Exception as e:
             print(f"Error classifying image: {e}")
             return False
+    
+    # Método para contar estadísticas 
+    def get_stats(self):
+        if not self.service:
+            return {
+                'total': 0,
+                'buenas': 0,
+                'malas': 0,
+                'pendientes': 0
+            }
+        
+        folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        
+        try:
+            # Contar imágenes pendientes
+            pending_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and not name contains 'buena_' and not name contains 'mala_' and trashed=false"
+            pending_response = self.service.files().list(q=pending_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+            pending_count = len(pending_response.get('files', []))
+            
+            # Contar imágenes clasificadas como buenas
+            good_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'buena_' and trashed=false"
+            good_response = self.service.files().list(q=good_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+            good_count = len(good_response.get('files', []))
+            
+            # Contar imágenes clasificadas como malas
+            bad_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'mala_' and trashed=false"
+            bad_response = self.service.files().list(q=bad_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+            bad_count = len(bad_response.get('files', []))
+            
+            # Calcular total
+            total_count = pending_count + good_count + bad_count
+            
+            return {
+                'total': total_count,
+                'buenas': good_count,
+                'malas': bad_count,
+                'pendientes': pending_count
+            }
+        except Exception as e:
+            print(f"Error getting stats: {e}")
+            return {
+                'total': 0,
+                'buenas': 0,
+                'malas': 0,
+                'pendientes': 0
+            }
 
 # Instanciar el servicio de Google Drive
 drive_service = GoogleDriveService()
+
+# Función decoradora para requerir autenticación
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Rutas de la aplicación
 @app.route('/')
@@ -153,17 +176,9 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        user_data = db.users.find_one({"username": username})
-        
-        if user_data and check_password_hash(user_data['password_hash'], password):
-            user = User(
-                id=user_data['_id'],
-                username=user_data['username'],
-                password_hash=user_data['password_hash'],
-                full_name=user_data['full_name'],
-                role=user_data['role']
-            )
-            login_user(user)
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            session['username'] = username
             return redirect(url_for('dashboard'))
         
         flash('Usuario o contraseña incorrectos', 'danger')
@@ -171,28 +186,22 @@ def login():
     return render_template('login.html')
 
 @app.route('/logout')
-@login_required
 def logout():
-    logout_user()
+    session.pop('logged_in', None)
+    session.pop('username', None)
     return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Obtener estadísticas de clasificación
-    stats = {
-        'total': db.classifications.count_documents({}),
-        'buenas': db.classifications.count_documents({"classification": "buena"}),
-        'malas': db.classifications.count_documents({"classification": "mala"}),
-        'pendientes': len(drive_service.list_images())
-    }
-    
-    return render_template('dashboard.html', user=current_user, stats=stats)
+    # Obtener estadísticas desde Google Drive
+    stats = drive_service.get_stats()
+    return render_template('dashboard.html', username=session['username'], stats=stats)
 
 @app.route('/classify')
 @login_required
 def classify():
-    return render_template('classify.html', user=current_user)
+    return render_template('classify.html', username=session['username'])
 
 @app.route('/api/get_image')
 @login_required
@@ -253,15 +262,6 @@ def classify_image():
     success = drive_service.classify_image(file_id, classification, original_name)
     
     if success:
-        # Registrar la clasificación en la base de datos
-        db.classifications.insert_one({
-            'file_id': file_id,
-            'original_name': original_name,
-            'classification': classification,
-            'classified_by': current_user.id,
-            'classified_at': datetime.datetime.utcnow()
-        })
-        
         return jsonify({
             'success': True,
             'message': f'Imagen clasificada como {classification}'
@@ -272,77 +272,5 @@ def classify_image():
             'message': 'Error al clasificar la imagen'
         })
 
-@app.route('/admin')
-@login_required
-def admin():
-    if current_user.role != 'admin':
-        flash('No tienes permiso para acceder a esta página', 'danger')
-        return redirect(url_for('dashboard'))
-    
-    users = list(db.users.find({}, {'password_hash': 0}))
-    
-    return render_template('admin.html', user=current_user, users=users)
-
-@app.route('/api/add_user', methods=['POST'])
-@login_required
-def add_user():
-    if current_user.role != 'admin':
-        return jsonify({
-            'success': False,
-            'message': 'No tienes permiso para realizar esta acción'
-        })
-    
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    full_name = data.get('full_name')
-    role = data.get('role', 'user')
-    
-    if not all([username, password, full_name]):
-        return jsonify({
-            'success': False,
-            'message': 'Datos incompletos'
-        })
-    
-    # Verificar si el usuario ya existe
-    existing_user = db.users.find_one({"username": username})
-    if existing_user:
-        return jsonify({
-            'success': False,
-            'message': 'El nombre de usuario ya existe'
-        })
-    
-    # Crear el nuevo usuario
-    user_id = str(uuid.uuid4())
-    db.users.insert_one({
-        '_id': user_id,
-        'username': username,
-        'password_hash': generate_password_hash(password),
-        'full_name': full_name,
-        'role': role,
-        'created_at': datetime.datetime.utcnow()
-    })
-    
-    return jsonify({
-        'success': True,
-        'message': 'Usuario creado exitosamente'
-    })
-
-# Inicializar base de datos con un usuario admin si no existe
-def init_db():
-    if db.users.count_documents({}) == 0:
-        # Crear usuario admin por defecto
-        admin_id = str(uuid.uuid4())
-        db.users.insert_one({
-            '_id': admin_id,
-            'username': 'admin',
-            'password_hash': generate_password_hash('admin123'),  # Cambiar en producción
-            'full_name': 'Administrador',
-            'role': 'admin',
-            'created_at': datetime.datetime.utcnow()
-        })
-        print("Usuario admin creado con éxito. Username: admin, Password: admin123")
-
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=False)
