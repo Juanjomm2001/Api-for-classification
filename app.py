@@ -11,22 +11,22 @@ from functools import wraps
 from dotenv import load_dotenv
 import base64
 
-# Cargar variables de entorno
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(16))
 
-# Credenciales fijas (reemplaza con las que prefieras)
+# Fixed credentials (replace with your preferred ones)
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', '')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
-# Clase para Google Drive
+# Class for Google Drive
 class GoogleDriveService:
     def __init__(self):
         self.service = None
         self.initialize_service()
-    # Configura la conexión a Google Drive usando las credenciales
+    # Set up connection to Google Drive using credentials
     def initialize_service(self):  
         try:
             credentials_file = os.getenv('GOOGLE_DRIVE_CREDENTIALS')
@@ -42,8 +42,8 @@ class GoogleDriveService:
             self.service = build('drive', 'v3', credentials=credentials)
         except Exception as e:
             print(f"Error initializing Drive service: {e}")
-    #Obtiene una lista de imágenes no clasificadas en la carpeta
-    def list_images(self):
+    # Get a list of unclassified images in the folder
+    def list_images(self, filter_date=None):
         if not self.service:
             return []
         
@@ -51,8 +51,8 @@ class GoogleDriveService:
         results = []
         
         try:
-            # Buscar imágenes en la carpeta que no han sido clasificadas
-            query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and not name contains 'buena_' and not name contains 'mala_' and trashed=false"
+            # Search for images in the folder that haven't been classified
+            query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and not name contains 'good_' and not name contains 'bad_' and trashed=false"
             
             response = self.service.files().list(
                 q=query,
@@ -63,11 +63,23 @@ class GoogleDriveService:
             ).execute()
             
             results = response.get('files', [])
+            
+            # Apply date filter if provided
+            if filter_date:
+                filter_date_obj = datetime.datetime.strptime(filter_date, '%Y-%m-%d')
+                filter_date_start = filter_date_obj.replace(hour=0, minute=0, second=0).isoformat() + 'Z'
+                filter_date_end = filter_date_obj.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
+                
+                results = [
+                    file for file in results 
+                    if filter_date_start <= file['createdTime'] <= filter_date_end
+                ]
+                
         except Exception as e:
             print(f"Error listing images: {e}")
         
         return results
-    # Descarga una imagen específica
+    # Download a specific image
     def get_image(self, file_id):
         if not self.service:
             return None
@@ -86,16 +98,16 @@ class GoogleDriveService:
         except Exception as e:
             print(f"Error downloading image: {e}")
             return None
-    # Renombra una imagen añadiendo un prefijo (buena_ o mala_)
+    # Rename an image adding a prefix (good_ or bad_)
     def classify_image(self, file_id, classification, original_name):
         if not self.service:
             return False
         
         try:
-            # Crear nuevo nombre con el prefijo de clasificación
+            # Create new name with classification prefix
             new_name = f"{classification}_{original_name}"
             
-            # Actualizar el nombre del archivo
+            # Update file name
             self.service.files().update(
                 fileId=file_id,
                 body={'name': new_name},
@@ -107,56 +119,63 @@ class GoogleDriveService:
             print(f"Error classifying image: {e}")
             return False
     
-    # Método para contar estadísticas 
-    def get_stats(self):
+    # Method for counting statistics
+    def get_stats(self, filter_date=None):
         if not self.service:
             return {
                 'total': 0,
-                'buenas': 0,
-                'malas': 0,
-                'pendientes': 0
+                'good': 0,
+                'bad': 0,
+                'pending': 0
             }
         
         folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
         
         try:
-            # Contar imágenes pendientes
-            pending_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and not name contains 'buena_' and not name contains 'mala_' and trashed=false"
+            date_filter = ""
+            if filter_date:
+                filter_date_obj = datetime.datetime.strptime(filter_date, '%Y-%m-%d')
+                filter_date_start = filter_date_obj.replace(hour=0, minute=0, second=0).isoformat() + 'Z'
+                filter_date_end = filter_date_obj.replace(hour=23, minute=59, second=59).isoformat() + 'Z'
+                date_filter = f" and createdTime >= '{filter_date_start}' and createdTime <= '{filter_date_end}'"
+            
+            # Count pending images
+            pending_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and not name contains 'good_' and not name contains 'bad_' and trashed=false{date_filter}"
             pending_response = self.service.files().list(q=pending_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
             pending_count = len(pending_response.get('files', []))
             
-            # Contar imágenes clasificadas como buenas
-            good_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'buena_' and trashed=false"
+            # Count images classified as good
+            good_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'good_' and trashed=false{date_filter}"
             good_response = self.service.files().list(q=good_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
             good_count = len(good_response.get('files', []))
             
-            # Contar imágenes clasificadas como malas
-            bad_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'mala_' and trashed=false"
+            # Count images classified as bad
+            bad_query = f"'{folder_id}' in parents and (mimeType='image/jpeg' or mimeType='image/png') and name contains 'bad_' and trashed=false{date_filter}"
             bad_response = self.service.files().list(q=bad_query, spaces='drive', fields='files(id)', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
             bad_count = len(bad_response.get('files', []))
             
-            # Calcular total
+            # Calculate total
             total_count = pending_count + good_count + bad_count
             
             return {
                 'total': total_count,
-                'buenas': good_count,
-                'malas': bad_count,
-                'pendientes': pending_count
+                'good': good_count,
+                'bad': bad_count,
+                'pending': pending_count
             }
         except Exception as e:
             print(f"Error getting stats: {e}")
             return {
                 'total': 0,
-                'buenas': 0,
-                'malas': 0,
-                'pendientes': 0
+                'good': 0,
+                'bad': 0,
+                'pending': 0
             }
 
-# Instanciar el servicio de Google Drive
+# Instantiate Google Drive service
 drive_service = GoogleDriveService()
 
-# Función decoradora para requerir autenticación
+# Decorator function to require authentication
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -165,7 +184,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Rutas de la aplicación
+# Application routes
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -181,7 +200,7 @@ def login():
             session['username'] = username
             return redirect(url_for('dashboard'))
         
-        flash('Usuario o contraseña incorrectos', 'danger')
+        flash('Incorrect username or password', 'danger')
     
     return render_template('login.html')
 
@@ -194,46 +213,53 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    # Obtener estadísticas desde Google Drive
-    stats = drive_service.get_stats()
-    return render_template('dashboard.html', username=session['username'], stats=stats)
+    # Get filter date from query parameters
+    filter_date = request.args.get('filter_date')
+    
+    # Get statistics from Google Drive
+    stats = drive_service.get_stats(filter_date)
+    return render_template('dashboard.html', username=session['username'], stats=stats, filter_date=filter_date)
 
 @app.route('/classify')
 @login_required
 def classify():
-    return render_template('classify.html', username=session['username'])
+    # Get filter date from query parameters
+    filter_date = request.args.get('filter_date')
+    return render_template('classify.html', username=session['username'], filter_date=filter_date)
 
 @app.route('/api/get_image')
 @login_required
 def get_image():
-    images = drive_service.list_images()
+    # Get filter date from query parameters
+    filter_date = request.args.get('filter_date')
+    images = drive_service.list_images(filter_date)
     
     if not images:
         return jsonify({
             'success': False,
-            'message': 'No hay imágenes pendientes de clasificación'
+            'message': 'No pending images to classify'
         })
     
-    # Tomar la primera imagen
+    # Take the first image
     image = images[0]
     image_data = drive_service.get_image(image['id'])
     
     if not image_data:
         return jsonify({
             'success': False,
-            'message': 'Error al descargar la imagen'
+            'message': 'Error downloading the image'
         })
     
-    # Convertir la imagen a base64 para mostrarla en el navegador
+    # Convert image to base64 to display in browser
     image_b64 = base64.b64encode(image_data).decode('utf-8')
     
-    # Determinar el tipo MIME
+    # Determine MIME type
     mime_type = image['mimeType']
     data_url = f"data:{mime_type};base64,{image_b64}"
     
-    # Formatear fecha de creación
+    # Format creation date
     created_time = datetime.datetime.fromisoformat(image['createdTime'].replace('Z', '+00:00'))
-    formatted_time = created_time.strftime("%d/%m/%Y %H:%M:%S")
+    formatted_time = created_time.strftime("%m/%d/%Y %H:%M:%S")
     
     return jsonify({
         'success': True,
@@ -255,21 +281,21 @@ def classify_image():
     if not all([file_id, classification, original_name]):
         return jsonify({
             'success': False,
-            'message': 'Datos incompletos'
+            'message': 'Incomplete data'
         })
     
-    # Clasificar la imagen en Google Drive
+    # Classify the image in Google Drive
     success = drive_service.classify_image(file_id, classification, original_name)
     
     if success:
         return jsonify({
             'success': True,
-            'message': f'Imagen clasificada como {classification}'
+            'message': f'Image classified as {classification}'
         })
     else:
         return jsonify({
             'success': False,
-            'message': 'Error al clasificar la imagen'
+            'message': 'Error classifying the image'
         })
 
 if __name__ == '__main__':

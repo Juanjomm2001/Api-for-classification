@@ -1,10 +1,10 @@
 <!-- templates/classify.html -->
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clasificación de Imágenes</title>
+    <title>Image Classification</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -27,11 +27,11 @@
             margin: 10px;
             border-radius: 10px;
         }
-        .btn-buena {
+        .btn-good {
             background-color: #1cc88a;
             border-color: #169a6b;
         }
-        .btn-mala {
+        .btn-bad {
             background-color: #e74a3b;
             border-color: #c43c30;
         }
@@ -76,6 +76,13 @@
             border-radius: 10px;
             margin-top: 30px;
         }
+        .filter-container {
+            background-color: #f8f9fc;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #e3e6f0;
+        }
     </style>
 </head>
 <body>
@@ -83,7 +90,7 @@
         <div class="container">
             <a class="navbar-brand" href="#">
                 <i class="fas fa-camera me-2"></i>
-                Sistema de Clasificación
+                Classification System
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -97,12 +104,12 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link active" href="{{ url_for('classify') }}">
-                            <i class="fas fa-check-circle me-1"></i> Clasificar Imágenes
+                            <i class="fas fa-check-circle me-1"></i> Classify Images
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">
-                            <i class="fas fa-sign-out-alt me-1"></i> Cerrar Sesión
+                            <i class="fas fa-sign-out-alt me-1"></i> Logout
                         </a>
                     </li>
                 </ul>
@@ -111,17 +118,44 @@
     </nav>
 
     <div class="container py-4">
-        <h1 class="mb-4">Clasificación de Imágenes</h1>
+        <h1 class="mb-4">Image Classification</h1>
         
+                <!-- Date Filter Form -->
+        <div class="filter-container mb-4">
+            <form id="date-filter-form" class="row g-3 align-items-center">
+                <div class="col-md-4">
+                    <label for="filter_date" class="form-label">Filter by Date:</label>
+                    <input type="date" id="filter_date" name="filter_date" class="form-control" value="{{ filter_date }}">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="fas fa-filter me-1"></i> Apply Filter
+                    </button>
+                    <a href="{{ url_for('classify') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-1"></i> Clear Filter
+                    </a>
+                </div>
+                <div class="col-md-4">
+                    <div class="alert alert-info mb-0" role="alert">
+                        {% if filter_date %}
+                            <i class="fas fa-info-circle me-1"></i> Showing images for: {{ filter_date }}
+                        {% else %}
+                            <i class="fas fa-info-circle me-1"></i> Showing images for all dates
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+                
         <div class="row mb-3">
             <div class="col-md-12">
                 <div class="card shadow">
                     <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                        <h6 class="m-0 font-weight-bold text-primary">Imágenes pendientes</h6>
-                        <span id="counter-badge" class="badge bg-warning counter-badge">Cargando...</span>
+                        <h6 class="m-0 font-weight-bold text-primary">Pending Images</h6>
+                        <span id="counter-badge" class="badge bg-warning counter-badge">Loading...</span>
                     </div>
                     <div class="card-body">
-                        <p class="mb-0">Clasifique las imágenes como "buenas" o "malas" según la calidad del agua en el conveyor.</p>
+                        <p class="mb-0">Classify the images as "good" or "bad" based on the water quality in the conveyor.</p>
                     </div>
                 </div>
             </div>
@@ -131,8 +165,8 @@
             <div class="row">
                 <div class="col-md-12">
                     <div id="image-info" class="image-info d-none">
-                        <h5 id="image-name">Nombre de la imagen</h5>
-                        <p id="image-date" class="mb-0">Fecha: </p>
+                        <h5 id="image-name">Image name</h5>
+                        <p id="image-date" class="mb-0">Date: </p>
                     </div>
                 </div>
             </div>
@@ -140,145 +174,149 @@
             <div class="row">
                 <div class="col-md-12">
                     <div id="image-container" class="image-container">
-                        <img id="current-image" src="" alt="Imagen a clasificar">
+                        <img id="current-image" src="" alt="Image to classify">
                     </div>
                 </div>
             </div>
             
             <div class="row">
                 <div class="col-12 text-center mt-3 mb-5">
-                    <button id="btn-buena" class="btn btn-success btn-classify btn-buena">
-                        <i class="fas fa-check-circle me-2"></i> BUENA CALIDAD
+                    <button id="btn-buena" class="btn btn-success btn-classify btn-good">
+                        <i class="fas fa-check-circle me-2"></i> GOOD QUALITY
                     </button>
-                    <button id="btn-mala" class="btn btn-danger btn-classify btn-mala">
-                        <i class="fas fa-times-circle me-2"></i> MALA CALIDAD
+                    <button id="btn-mala" class="btn btn-danger btn-classify btn-bad">
+                        <i class="fas fa-times-circle me-2"></i> BAD QUALITY
                     </button>
                 </div>
             </div>
+            <div id="no-images" class="no-images d-none">
+                <i class="fas fa-check-circle mb-3" style="font-size: 4rem; color: #1cc88a;"></i>
+                <h3>No pending images to classify!</h3>
+                <p>All images have been successfully classified.</p>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-primary mt-3">
+                    <i class="fas fa-arrow-left me-2"></i> Back to Dashboard
+                </a>
+            </div>
         </div>
-            
-        <div id="no-images" class="no-images d-none">
-            <i class="fas fa-check-circle mb-3" style="font-size: 4rem; color: #1cc88a;"></i>
-            <h3>¡No hay imágenes pendientes de clasificación!</h3>
-            <p>Todas las imágenes han sido clasificadas correctamente.</p>
-            <a href="{{ url_for('dashboard') }}" class="btn btn-primary mt-3">
-                <i class="fas fa-arrow-left me-2"></i> Volver al Dashboard
-            </a>
+    
+        <!-- Loading overlay -->
+        <div id="loading-overlay" class="loading-overlay">
+            <div class="spinner-border text-light" role="status"></div>
+            <div class="loading-text">Loading image...</div>
         </div>
-    </div>
-
-    <!-- Loading overlay -->
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="spinner-border text-light" role="status"></div>
-        <div class="loading-text">Cargando imagen...</div>
-    </div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const imageContainer = document.getElementById('image-classification-container');
-            const noImagesContainer = document.getElementById('no-images');
-            const currentImage = document.getElementById('current-image');
-            const imageName = document.getElementById('image-name');
-            const imageDate = document.getElementById('image-date');
-            const imageInfo = document.getElementById('image-info');
-            const counterBadge = document.getElementById('counter-badge');
-            const btnBuena = document.getElementById('btn-buena');
-            const btnMala = document.getElementById('btn-mala');
-            const loadingOverlay = document.getElementById('loading-overlay');
-            
-            let currentFileId = null;
-            let currentFileName = null;
-            
-            // Función para cargar una imagen
-            function loadImage() {
-                showLoading();
+    
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const imageContainer = document.getElementById('image-classification-container');
+                const noImagesContainer = document.getElementById('no-images');
+                const currentImage = document.getElementById('current-image');
+                const imageName = document.getElementById('image-name');
+                const imageDate = document.getElementById('image-date');
+                const imageInfo = document.getElementById('image-info');
+                const counterBadge = document.getElementById('counter-badge');
+                const btnBuena = document.getElementById('btn-buena');
+                const btnMala = document.getElementById('btn-mala');
+                const loadingOverlay = document.getElementById('loading-overlay');
+                const filterDate = document.getElementById('filter_date').value;
                 
-                fetch('/api/get_image')
+                let currentFileId = null;
+                let currentFileName = null;
+                
+                // Function to load an image
+                function loadImage() {
+                    showLoading();
+                    
+                    let url = '/api/get_image';
+                    if (filterDate) {
+                        url += '?filter_date=' + filterDate;
+                    }
+                    
+                    fetch(url)
+                        .then(response => response.json())
+                        .then(data => {
+                            hideLoading();
+                            
+                            if (data.success) {
+                                imageContainer.classList.remove('d-none');
+                                noImagesContainer.classList.add('d-none');
+                                
+                                currentImage.src = data.image_data;
+                                imageName.textContent = data.name;
+                                imageDate.textContent = 'Date: ' + data.created_time;
+                                imageInfo.classList.remove('d-none');
+                                
+                                currentFileId = data.file_id;
+                                currentFileName = data.name;
+                                
+                                counterBadge.textContent = 'Pending: ' + data.remaining;
+                            } else {
+                                imageContainer.classList.add('d-none');
+                                noImagesContainer.classList.remove('d-none');
+                                counterBadge.textContent = 'Pending: 0';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            hideLoading();
+                            alert('Error loading image. Please try again.');
+                        });
+                }
+                
+                // Function to classify an image
+                function classifyImage(classification) {
+                    if (!currentFileId) return;
+                    
+                    showLoading();
+                    
+                    fetch('/api/classify_image', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            file_id: currentFileId,
+                            classification: classification,
+                            name: currentFileName
+                        })
+                    })
                     .then(response => response.json())
                     .then(data => {
-                        hideLoading();
-                        
                         if (data.success) {
-                            imageContainer.classList.remove('d-none');
-                            noImagesContainer.classList.add('d-none');
-                            
-                            currentImage.src = data.image_data;
-                            imageName.textContent = data.name;
-                            imageDate.textContent = 'Fecha: ' + data.created_time;
-                            imageInfo.classList.remove('d-none');
-                            
-                            currentFileId = data.file_id;
-                            currentFileName = data.name;
-                            
-                            counterBadge.textContent = 'Pendientes: ' + data.remaining;
+                            loadImage(); // Load the next image
                         } else {
-                            imageContainer.classList.add('d-none');
-                            noImagesContainer.classList.remove('d-none');
-                            counterBadge.textContent = 'Pendientes: 0';
+                            hideLoading();
+                            alert('Error classifying image: ' + data.message);
                         }
                     })
                     .catch(error => {
                         console.error('Error:', error);
                         hideLoading();
-                        alert('Error al cargar la imagen. Por favor, intente nuevamente.');
+                        alert('Error classifying image. Please try again.');
                     });
-            }
-            
-            // Función para clasificar una imagen
-            function classifyImage(classification) {
-                if (!currentFileId) return;
+                }
                 
-                showLoading();
+                // Show/hide loading overlay
+                function showLoading() {
+                    loadingOverlay.classList.remove('d-none');
+                }
                 
-                fetch('/api/classify_image', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        file_id: currentFileId,
-                        classification: classification,
-                        name: currentFileName
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        loadImage(); // Cargar la siguiente imagen
-                    } else {
-                        hideLoading();
-                        alert('Error al clasificar la imagen: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    hideLoading();
-                    alert('Error al clasificar la imagen. Por favor, intente nuevamente.');
+                function hideLoading() {
+                    loadingOverlay.classList.add('d-none');
+                }
+                
+                // Event listeners for buttons
+                btnBuena.addEventListener('click', function() {
+                    classifyImage('good');
                 });
-            }
-            
-            // Mostrar/ocultar el overlay de carga
-            function showLoading() {
-                loadingOverlay.classList.remove('d-none');
-            }
-            
-            function hideLoading() {
-                loadingOverlay.classList.add('d-none');
-            }
-            
-            // Event listeners para los botones
-            btnBuena.addEventListener('click', function() {
-                classifyImage('buena');
+                
+                btnMala.addEventListener('click', function() {
+                    classifyImage('bad');
+                });
+                
+                // Load the first image on start
+                loadImage();
             });
-            
-            btnMala.addEventListener('click', function() {
-                classifyImage('mala');
-            });
-            
-            // Cargar la primera imagen al iniciar
-            loadImage();
-        });
-    </script>
-</body>
-</html>
+        </script>
+    </body>
+    </html>
